@@ -23,3 +23,17 @@ state
 
 # Editor files
 .vscode
+
+# Kartaclysm
+config.xml
+wwfc
+client/.patcher/
+client/out/
+deploy/.env
+deploy/data/
+deploy/payload/
+*.pem
+logs/
+state/
+!deploy/*.sh
+!client/*.sh

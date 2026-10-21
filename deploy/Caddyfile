@@ -1,0 +1,19 @@
+# Port 80 belongs to wwfc (the Wii talks plain HTTP to nas.<domain>), so Caddy only serves 443
+# and gets its certificate with the TLS-ALPN challenge.
+{
+	email {$ACME_EMAIL}
+	http_port 8880
+	auto_https disable_redirects
+}
+
+stats.{$DOMAIN}, {$DOMAIN} {
+	encode gzip
+	@api path /api/stats /api/groups /api/leaderboard /api/vrhistory
+	handle @api {
+		reverse_proxy 127.0.0.1:80
+	}
+	handle {
+		root * /srv/web
+		file_server
+	}
+}

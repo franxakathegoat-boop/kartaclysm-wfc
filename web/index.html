@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kartaclysm WFC - live stats</title>
+<style>
+body{margin:0;font:16px system-ui,sans-serif;background:#0d0b1a;color:#eee}
+header{padding:24px;background:linear-gradient(90deg,#ff3d6e,#7a3cff)}h1{margin:0}
+main{max-width:900px;margin:auto;padding:16px}.cards{display:flex;gap:12px;flex-wrap:wrap}
+.card{flex:1;min-width:150px;background:#1b1830;border-radius:10px;padding:16px;text-align:center}
+.card b{display:block;font-size:2em}table{width:100%;border-collapse:collapse;margin-top:8px}
+td,th{padding:6px 8px;border-bottom:1px solid #2b2745;text-align:left}th{color:#aaa}
+.tabs button{background:#1b1830;color:#eee;border:0;padding:8px 14px;border-radius:6px;cursor:pointer}
+.tabs button.on{background:#7a3cff}small{color:#888}
+</style></head><body>
+<header><h1>Kartaclysm WFC</h1><small>Live server stats - refreshes every 30 s</small></header>
+<main>
+<div class="cards"><div class="card"><b id="online">-</b>players online</div>
+<div class="card"><b id="active">-</b>in a race</div><div class="card"><b id="groups">-</b>rooms</div></div>
+<h2>Rooms</h2><table id="rooms"><tr><th>Room</th><th>Type</th><th>Players</th></tr></table>
+<h2>Rankings</h2><div class="tabs"><button data-t="vr" class="on">VR</button> <button data-t="br">BR</button></div>
+<table id="lb"><tr><th>#</th><th>Player</th><th>Rating</th></tr></table>
+</main>
+<script>
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let kind='vr';
+async function j(u){const r=await fetch(u);if(!r.ok)throw r.status;return r.json()}
+async function refresh(){
+  try{const s=(await j('/api/stats')).global;for(const k of['online','active','groups'])document.getElementById(k).textContent=s[k]}catch(e){}
+  try{const g=await j('/api/groups?game=mariokartwii');document.getElementById('rooms').innerHTML='<tr><th>Room</th><th>Type</th><th>Players</th></tr>'+
+    (g.length?g.map(r=>`<tr><td>${esc(r.id)}</td><td>${esc(r.type)}${r.rk?' / '+esc(r.rk):''}</td><td>${Object.keys(r.players||{}).length}</td></tr>`).join(''):'<tr><td colspan=3><small>No rooms open</small></td></tr>')}catch(e){}
+  try{const l=await j('/api/leaderboard?type='+kind+'&limit=100');document.getElementById('lb').innerHTML='<tr><th>#</th><th>Player</th><th>Rating</th></tr>'+
+    (l.players.length?l.players.map(p=>`<tr><td>${p.rank}</td><td>${esc(p.name||('Player '+p.pid))}</td><td>${p.rating}</td></tr>`).join(''):'<tr><td colspan=3><small>No ratings yet</small></td></tr>')}catch(e){}
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{kind=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));refresh()});
+refresh();setInterval(refresh,30000);
+</script></body></html>

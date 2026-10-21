@@ -1,6 +1,7 @@
 package database
 
 func (c *Connection) UpdateTables() {
+	c.createRatingTables()
 	_, _ = c.pool.Exec(c.ctx, `
 
 	ALTER TABLE ONLY public.users

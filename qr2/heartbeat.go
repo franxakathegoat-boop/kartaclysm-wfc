@@ -96,6 +96,10 @@ func heartbeat(moduleName string, conn net.PacketConn, addr net.UDPAddr, buffer 
 		return
 	}
 
+	if session.login != nil {
+		recordRating(session.login.ProfileID, payload)
+	}
+
 	if len(unknowns) > 0 {
 		// Try to login using the first unknown as a profile ID
 		// This makes it possible to execute the exploit on the client sooner

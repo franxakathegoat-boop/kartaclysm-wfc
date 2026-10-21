@@ -46,6 +46,8 @@ func StartServer(reload bool) {
 		panic(err)
 	}
 
+	startRatingRecorder(config)
+
 	// Connect to database for event logging
 	if config.EventReporting.LogToDatabase {
 		db := database.Start(config)

@@ -60,7 +60,6 @@ BEGIN
     END IF;
 END $$;
 
-ALTER TABLE public.users OWNER TO wiilink;
 
 --
 -- Name: sake_records; Type: TABLE; Schema: public; Owner: wiilink
@@ -99,7 +98,6 @@ ALTER TABLE ONLY public.mario_kart_wii_sake
     ADD IF NOT EXISTS upload_time timestamp without time zone;
 
 
-ALTER TABLE public.mario_kart_wii_sake OWNER TO wiilink;
 
 --
 -- Name: gamestats_public_data; Type: TABLE; Schema: public; Owner: wiilink
@@ -128,7 +126,6 @@ CREATE SEQUENCE IF NOT EXISTS public.users_profile_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.users_profile_id_seq OWNER TO wiilink;
 
 --
 -- Name: users_profile_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wiilink
@@ -146,8 +143,11 @@ ALTER TABLE ONLY public.users ALTER COLUMN profile_id SET DEFAULT nextval('publi
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: wiilink
 --
 
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (profile_id);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_pkey') THEN
+        ALTER TABLE ONLY public.users ADD CONSTRAINT users_pkey PRIMARY KEY (profile_id);
+    END IF;
+END $$;
 
 --
 -- Name: events; Type: TABLE; Schema: public; Owner: wiilink
