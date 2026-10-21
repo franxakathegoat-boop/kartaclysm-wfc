@@ -37,8 +37,9 @@ install -m 600 "$KEY" "$WORK/misc/private-key-OUT.pem"   # make.sh only checks t
 trap 'rm -f "$WORK/misc/private-key-OUT.pem" "$WORK/dist/private-key.pem"' EXIT
 
 # 3. compile (Docker Hub rate-limits anonymous pulls; Google's mirror serves the same image)
-docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull -q "$IMAGE" >/dev/null || { IMAGE="mirror.gcr.io/$IMAGE"; docker pull -q "$IMAGE" >/dev/null; }
-docker run --rm -u "$(id -u):$(id -g)" -v "$WORK:/src" -w /src "$IMAGE" sh -c '
+# x86 only: on ARM servers deploy/install.sh sets up emulation
+docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull -q --platform linux/amd64 "$IMAGE" >/dev/null || { IMAGE="mirror.gcr.io/$IMAGE"; docker pull -q --platform linux/amd64 "$IMAGE" >/dev/null; }
+docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" -v "$WORK:/src" -w /src "$IMAGE" sh -c '
   mkdir -p .bin && ln -sf "$(command -v python3)" .bin/python && export PATH="/src/.bin:$PATH"
   ./make.sh --clean --payload --stage1 --patch -- -j"$(nproc)" -gRMC "-DWWFC_DOMAIN=\"$0\"" -DKARTACLYSM=1 "-DKARTACLYSM_LAST_SLOT=$1"
 ' "$DOMAIN" "$LAST"

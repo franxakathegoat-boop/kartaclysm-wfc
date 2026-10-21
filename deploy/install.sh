@@ -3,10 +3,11 @@
 #   git clone https://github.com/franxakathegoat-boop/kartaclysm-wfc /opt/kartaclysm-wfc
 #   DOMAIN=kartaclysm.net ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/install.sh
 # Before running: point DNS for <domain> and *.<domain> (A record, plus AAAA if you like) at this server.
+# No domain? DOMAIN=auto uses a free nip.io name made from this server's IP (no DNS setup needed).
 # Safe to run again (updates); REBUILD_CLIENT=1 rebuilds the game patches with the same key.
 set -euo pipefail
 cd "$(dirname "$0")"
-: "${DOMAIN:?set DOMAIN, e.g. DOMAIN=kartaclysm.net}"
+: "${DOMAIN:?set DOMAIN, e.g. DOMAIN=kartaclysm.net, or DOMAIN=auto for a free nip.io name}"
 : "${ACME_EMAIL:?set ACME_EMAIL, the e-mail for the HTTPS certificate}"
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
 
@@ -14,6 +15,20 @@ cd "$(dirname "$0")"
 apt-get update -q && apt-get install -y -q ca-certificates curl git openssl python3 >/dev/null
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
+fi
+# the devkitPPC compiler image is x86 only: on ARM servers (e.g. Oracle's free Ampere VMs) run it through emulation
+[ "$(uname -m)" = x86_64 ] || docker run --privileged --rm tonistiigi/binfmt --install amd64 >/dev/null
+# small servers (e.g. Oracle's free 1 GB VM): add swap so the build and Postgres fit
+if [ "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -lt 1600000 ] && [ -z "$(swapon --show)" ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+# DOMAIN=auto: free nip.io name from this server's public IP in hex (e.g. 8ba1f20e.nip.io, 15 characters);
+# it resolves every subdomain the game uses. It changes if the server's IP changes.
+if [ "$DOMAIN" = auto ]; then
+  ip=$(curl -4 -fsS https://api.ipify.org)
+  [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "could not detect the public IP (got: $ip)"; exit 1; }
+  DOMAIN=$(printf '%02x%02x%02x%02x.nip.io' ${ip//./ }); echo "Domain: $DOMAIN"
 fi
 
 # 2. Game patches for all 4 regions + signed payloads, built here so the signing key never leaves this server.
@@ -38,6 +53,12 @@ ufw allow 29920/tcp     # gamestats
 ufw allow 27900/udp     # QR2 (rooms / heartbeats, VR reports)
 ufw allow 27901/udp     # NATNEG
 ufw --force enable
+# Oracle Cloud images reject everything but SSH in iptables before ufw's rules are reached: hand the firewall to ufw
+if iptables -C INPUT -j REJECT --reject-with icmp-host-prohibited 2>/dev/null; then
+  iptables -D INPUT -j REJECT --reject-with icmp-host-prohibited
+  iptables -D FORWARD -j REJECT --reject-with icmp-host-prohibited 2>/dev/null || true
+  [ -f /etc/iptables/rules.v4 ] && sed -i '/icmp-host-prohibited/d' /etc/iptables/rules.v4
+fi
 
 # 4. Secrets (kept only on the VPS)
 if [ ! -f .env ]; then

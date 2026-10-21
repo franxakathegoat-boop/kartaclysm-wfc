@@ -44,6 +44,24 @@ DOMAIN=kartaclysm.net ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/inst
 4. Kartaclysm repo: set `"wfc_domain": "<domain>"` in `pack.json` and publish the pack. Every player's next PLAY
    rebuilds their game for the server (Dolphin and real Wii, all regions).
 
+### Free setup (Oracle Cloud Always Free + nip.io)
+1. Sign up at https://www.oracle.com/cloud/free/ (a card is needed to verify you; Always Free resources are not
+   charged). Pick a home region close to the players, e.g. Italy Northwest (Milan): it cannot be changed later.
+2. Create an instance: Ubuntu 24.04, shape `VM.Standard.E2.1.Micro` (x86, 1 GB; install.sh adds swap) or
+   `VM.Standard.A1.Flex` (ARM; install.sh runs the x86 compiler through emulation). Add your SSH key.
+3. Networking > the instance's VCN > Security List > Add ingress rules, source `0.0.0.0/0`:
+   TCP 80, 443, 28910, 29900, 29901, 29920 and UDP 27900, 27901.
+4. SSH in and run (no DNS needed: `DOMAIN=auto` makes a free nip.io name from the server's IP, e.g. `8ba1f20e.nip.io`):
+```sh
+sudo git clone https://github.com/franxakathegoat-boop/kartaclysm-wfc /opt/kartaclysm-wfc
+sudo DOMAIN=auto ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/install.sh
+```
+5. Put the printed domain into `wfc_domain` in the Kartaclysm `pack.json` and publish the pack.
+
+Notes: the nip.io name is the IP, so keep the same instance (a new IP means a new `wfc_domain`, and players
+rebuild once). Oracle may stop Always Free VMs that look idle for 7 days; switching the account to Pay As You Go
+avoids that and stays free within the Always Free limits.
+
 **Back up `deploy/payload/private-key.pem`.** With a new key, every player has to rebuild their game.
 When the pack gets more tracks, rebuild with `KARTACLYSM_LAST_SLOT=<new last slot> REBUILD_CLIENT=1`
 (same key, so players do not rebuild).
