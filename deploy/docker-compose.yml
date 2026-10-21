@@ -43,4 +43,5 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../web:/srv/web:ro
+      - ./data/client:/srv/client:ro   # game patches from client/build-client.sh
       - ./data/caddy:/data

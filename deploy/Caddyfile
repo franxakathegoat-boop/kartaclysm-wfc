@@ -12,6 +12,11 @@ stats.{$DOMAIN}, {$DOMAIN} {
 	handle @api {
 		reverse_proxy 127.0.0.1:80
 	}
+	# per-region game patches (stage0) that the Kartaclysm launcher downloads; built by install.sh
+	handle_path /client/* {
+		root * /srv/client
+		file_server
+	}
 	handle {
 		root * /srv/web
 		file_server

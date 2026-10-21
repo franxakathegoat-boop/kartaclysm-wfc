@@ -2,29 +2,35 @@
 # One-command Kartaclysm WFC deploy on a fresh Debian 12/13 or Ubuntu 22.04+ VPS (run as root):
 #   git clone https://github.com/franxakathegoat-boop/kartaclysm-wfc /opt/kartaclysm-wfc
 #   DOMAIN=kartaclysm.net ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/install.sh
-# Before running: copy the signed payload (client/out/<domain>/payload) to deploy/payload/, and point
-# DNS for <domain> and *.<domain> (A record, plus AAAA if you like) at this server.
+# Before running: point DNS for <domain> and *.<domain> (A record, plus AAAA if you like) at this server.
+# Safe to run again (updates); REBUILD_CLIENT=1 rebuilds the game patches with the same key.
 set -euo pipefail
 cd "$(dirname "$0")"
 : "${DOMAIN:?set DOMAIN, e.g. DOMAIN=kartaclysm.net}"
-: "${ACME_EMAIL:?set ACME_EMAIL for the Let's Encrypt account}"
+: "${ACME_EMAIL:?set ACME_EMAIL, the e-mail for the HTTPS certificate}"
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
-[ -f payload/stage1v1.bin ] || { echo "deploy/payload/ missing: run client/build-client.sh $DOMAIN on the build box and copy client/out/$DOMAIN/payload here"; exit 1; }
-# wwfc signs every payload download on the fly, so the signing key must be on the server (never in git).
-[ -f payload/private-key.pem ] || { echo "deploy/payload/private-key.pem missing (scp it from the build box, chmod 600)"; exit 1; }
-chmod 600 payload/private-key.pem
 
-# 1. Docker
+# 1. Docker (+ what the client build needs)
+apt-get update -q && apt-get install -y -q ca-certificates curl git openssl python3 >/dev/null
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
-  apt-get update -q && apt-get install -y -q ca-certificates curl
   curl -fsSL https://get.docker.com | sh
 fi
 
-# 2. Firewall: SSH + game ports + HTTPS stats page
+# 2. Game patches for all 4 regions + signed payloads, built here so the signing key never leaves this server.
+#    wwfc signs every payload download with deploy/payload/private-key.pem; keep a backup of it (never in git).
+if [ ! -f payload/stage1v1.bin ] || [ "$(cat payload/.domain 2>/dev/null)" != "$DOMAIN" ] || [ -n "${REBUILD_CLIENT:-}" ]; then
+  WWFC_KEY="$PWD/payload/private-key.pem" ../client/build-client.sh "$DOMAIN"
+  cp -r "../client/out/$DOMAIN/payload/." payload/
+  rm -rf data/client && mkdir -p data/client && cp "../client/out/$DOMAIN/client/"* data/client/
+  echo "$DOMAIN" > payload/.domain
+fi
+chmod 600 payload/private-key.pem
+
+# 3. Firewall: SSH + game ports + HTTPS (stats page, game patch downloads)
 apt-get install -y -q ufw >/dev/null
 ufw allow 22/tcp
 ufw allow 80/tcp        # NAS (Wii login, plain HTTP) + payload
-ufw allow 443/tcp       # Caddy: public stats page / API (TLS)
+ufw allow 443/tcp       # Caddy: public stats page / API / game patches (TLS)
 ufw allow 28910/tcp     # server browser (matchmaking list)
 ufw allow 29900/tcp     # GPCM (login, friends, presence)
 ufw allow 29901/tcp     # GPSP (profile search)
@@ -33,7 +39,7 @@ ufw allow 27900/udp     # QR2 (rooms / heartbeats, VR reports)
 ufw allow 27901/udp     # NATNEG
 ufw --force enable
 
-# 3. Secrets (kept only on the VPS)
+# 4. Secrets (kept only on the VPS)
 if [ ! -f .env ]; then
   umask 077
   cat > .env <<ENV
@@ -44,10 +50,14 @@ API_SECRET=$(openssl rand -hex 24)
 ALLOW_DOLPHIN_KEYS=true
 ENV
 fi
+sed -i -e "s|^DOMAIN=.*|DOMAIN=$DOMAIN|" -e "s|^ACME_EMAIL=.*|ACME_EMAIL=$ACME_EMAIL|" .env
 mkdir -p data/postgres data/logs data/state data/caddy
 
-# 4. Start (and on reboot: restart policy unless-stopped)
+# 5. Start (and on reboot: restart policy unless-stopped)
 docker compose up -d --build
 sleep 8
 docker compose ps
 curl -fsS "http://127.0.0.1/api/stats" && echo && echo "OK: https://stats.$DOMAIN"
+curl -fsS -o /dev/null --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/client/RMCPD00.txt" && echo "OK: game patches at https://$DOMAIN/client/" \
+  || echo "Game patches not reachable over HTTPS yet (certificate pending? check: docker compose logs caddy)"
+echo "Last step: set \"wfc_domain\": \"$DOMAIN\" in the Kartaclysm pack.json and publish the pack."

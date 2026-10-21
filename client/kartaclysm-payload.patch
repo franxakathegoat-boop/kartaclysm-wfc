@@ -1,0 +1,65 @@
+diff --git a/payload/import/mkw/Registry.hpp b/payload/import/mkw/Registry.hpp
+index 6d03e8f..74d5625 100644
+--- a/payload/import/mkw/Registry.hpp
++++ b/payload/import/mkw/Registry.hpp
+@@ -255,9 +255,27 @@ static bool IsCombinationValidBT(ECharacter character, EVehicle vehicle)
+ 
+ static bool IsRaceCourse(ECourse course)
+ {
++#  if KARTACLYSM
++    // Kartaclysm (LE-CODE): custom tracks use slots 0x44..KARTACLYSM_LAST_SLOT
++    if (course >= static_cast<ECourse>(0x44) &&
++        course <= static_cast<ECourse>(KARTACLYSM_LAST_SLOT)) {
++        return true;
++    }
++#  endif
+     return course >= ECourse::MARIO_CIRCUIT && course <= ECourse::GBA_SHY_GUY_BEACH;
+ }
+ 
++static bool IsRaceCourseVote(ECourse course)
++{
++#  if KARTACLYSM
++    // LE-CODE random choices (slots 0x3D..0x41) are only valid as a vote
++    if (course >= static_cast<ECourse>(0x3D) && course <= static_cast<ECourse>(0x41)) {
++        return true;
++    }
++#  endif
++    return IsRaceCourse(course);
++}
++
+ static bool IsBattleCourse(ECourse course)
+ {
+     return course >= ECourse::DELFINO_PIER && course <= ECourse::N64_SKYSCRAPER;
+diff --git a/payload/mkwFeature.cpp b/payload/mkwFeature.cpp
+index ff7e7d4..c992951 100644
+--- a/payload/mkwFeature.cpp
++++ b/payload/mkwFeature.cpp
+@@ -155,6 +155,7 @@ WWFC_DEFINE_PATCH =
+ }
+     );
+ 
++#if !KARTACLYSM // LE-CODE hooks the same call site (its own course decision)
+ // Report information about the upcoming match to the server
+ WWFC_DEFINE_PATCH = 
+     Patch::CallWithCTR( //
+@@ -175,6 +176,7 @@ WWFC_DEFINE_PATCH =
+     );
+ }
+     );
++#endif
+ 
+ } // namespace wwfc::mkw::Feature
+ 
+diff --git a/payload/mkwSecurity.cpp b/payload/mkwSecurity.cpp
+index 3f19a51..2134213 100644
+--- a/payload/mkwSecurity.cpp
++++ b/payload/mkwSecurity.cpp
+@@ -237,7 +237,7 @@ static bool IsRoomSelectPacketDataValid(const void* packet, u8 packetSize, u8 pl
+             continue;
+         }
+         if (config->isWifiVSRace()) {
+-            if (!IsRaceCourse(course)) {
++            if (!IsRaceCourseVote(course)) {
+                 return false;
+             }
+         } else /* if (config->isOnlineBattle()) */ {
