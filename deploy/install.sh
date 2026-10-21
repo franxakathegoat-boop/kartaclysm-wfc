@@ -4,17 +4,23 @@
 #   DOMAIN=kartaclysm.net ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/install.sh
 # Before running: point DNS for <domain> and *.<domain> (A record, plus AAAA if you like) at this server.
 # No domain? DOMAIN=auto uses a free nip.io name made from this server's IP (no DNS setup needed).
+# ACME_EMAIL (for the HTTPS certificate) is optional. deploy/oracle-init.sh runs this on a new server's first boot.
 # Safe to run again (updates); REBUILD_CLIENT=1 rebuilds the game patches with the same key.
 set -euo pipefail
 cd "$(dirname "$0")"
 : "${DOMAIN:?set DOMAIN, e.g. DOMAIN=kartaclysm.net, or DOMAIN=auto for a free nip.io name}"
-: "${ACME_EMAIL:?set ACME_EMAIL, the e-mail for the HTTPS certificate}"
+ACME_EMAIL="${ACME_EMAIL:-}"
+[[ -z "$ACME_EMAIL" || "$ACME_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || { echo "ignoring ACME_EMAIL '$ACME_EMAIL' (not an e-mail address)"; ACME_EMAIL=; }
+export HOME="${HOME:-/root}" DEBIAN_FRONTEND=noninteractive
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
 
-# 1. Docker (+ what the client build needs)
-apt-get update -q && apt-get install -y -q ca-certificates curl git openssl python3 >/dev/null
+# 1. Docker (+ what the client build needs). On a new server's first boot Ubuntu may still be installing updates:
+#    wait for the package lock instead of failing.
+apt_wait() { while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 5; done; }
+APT=(apt-get -o DPkg::Lock::Timeout=900 -y -q)
+"${APT[@]}" update >/dev/null && "${APT[@]}" install ca-certificates curl git openssl python3 psmisc >/dev/null
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
-  curl -fsSL https://get.docker.com | sh
+  apt_wait; curl -fsSL https://get.docker.com | sh
 fi
 # the devkitPPC compiler image is x86 only: on ARM servers (e.g. Oracle's free Ampere VMs) run it through emulation
 [ "$(uname -m)" = x86_64 ] || docker run --privileged --rm tonistiigi/binfmt --install amd64 >/dev/null
@@ -42,7 +48,7 @@ fi
 chmod 600 payload/private-key.pem
 
 # 3. Firewall: SSH + game ports + HTTPS (stats page, game patch downloads)
-apt-get install -y -q ufw >/dev/null
+"${APT[@]}" install ufw >/dev/null
 ufw allow 22/tcp
 ufw allow 80/tcp        # NAS (Wii login, plain HTTP) + payload
 ufw allow 443/tcp       # Caddy: public stats page / API / game patches (TLS)
@@ -71,14 +77,16 @@ API_SECRET=$(openssl rand -hex 24)
 ALLOW_DOLPHIN_KEYS=true
 ENV
 fi
-sed -i -e "s|^DOMAIN=.*|DOMAIN=$DOMAIN|" -e "s|^ACME_EMAIL=.*|ACME_EMAIL=$ACME_EMAIL|" .env
+sed -i -e '/^DOMAIN=/d' -e '/^ACME_EMAIL/d' .env
+printf 'DOMAIN=%s\nACME_EMAIL=%s\nACME_EMAIL_OPTION=%s\n' "$DOMAIN" "$ACME_EMAIL" "${ACME_EMAIL:+email $ACME_EMAIL}" >> .env
 mkdir -p data/postgres data/logs data/state data/caddy
 
 # 5. Start (and on reboot: restart policy unless-stopped)
 docker compose up -d --build
-sleep 8
+for i in $(seq 60); do curl -fsS -o /dev/null http://127.0.0.1/api/stats && break; sleep 5; done
 docker compose ps
-curl -fsS "http://127.0.0.1/api/stats" && echo && echo "OK: https://stats.$DOMAIN"
+curl -fsS "http://127.0.0.1/api/stats" && echo && echo "OK: game server running, stats page https://$DOMAIN" || echo "Game server not answering yet: docker compose logs wwfc"
+for i in $(seq 36); do curl -fsS -o /dev/null --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/client/RMCPD00.txt" && break; sleep 5; done
 curl -fsS -o /dev/null --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/client/RMCPD00.txt" && echo "OK: game patches at https://$DOMAIN/client/" \
   || echo "Game patches not reachable over HTTPS yet (certificate pending? check: docker compose logs caddy)"
 echo "Last step: set \"wfc_domain\": \"$DOMAIN\" in the Kartaclysm pack.json and publish the pack."

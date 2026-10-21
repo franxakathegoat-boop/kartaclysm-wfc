@@ -39,7 +39,7 @@ services:
     network_mode: host
     environment:
       DOMAIN: ${DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL}
+      ACME_EMAIL_OPTION: ${ACME_EMAIL_OPTION:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../web:/srv/web:ro

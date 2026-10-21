@@ -44,19 +44,20 @@ DOMAIN=kartaclysm.net ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/inst
 4. Kartaclysm repo: set `"wfc_domain": "<domain>"` in `pack.json` and publish the pack. Every player's next PLAY
    rebuilds their game for the server (Dolphin and real Wii, all regions).
 
-### Free setup (Oracle Cloud Always Free + nip.io)
+### Free setup (Oracle Cloud Always Free + nip.io), no terminal needed
 1. Sign up at https://www.oracle.com/cloud/free/ (a card is needed to verify you; Always Free resources are not
    charged). Pick a home region close to the players, e.g. Italy Northwest (Milan): it cannot be changed later.
-2. Create an instance: Ubuntu 24.04, shape `VM.Standard.E2.1.Micro` (x86, 1 GB; install.sh adds swap) or
-   `VM.Standard.A1.Flex` (ARM; install.sh runs the x86 compiler through emulation). Add your SSH key.
-3. Networking > the instance's VCN > Security List > Add ingress rules, source `0.0.0.0/0`:
-   TCP 80, 443, 28910, 29900, 29901, 29920 and UDP 27900, 27901.
-4. SSH in and run (no DNS needed: `DOMAIN=auto` makes a free nip.io name from the server's IP, e.g. `8ba1f20e.nip.io`):
-```sh
-sudo git clone https://github.com/franxakathegoat-boop/kartaclysm-wfc /opt/kartaclysm-wfc
-sudo DOMAIN=auto ACME_EMAIL=you@example.com /opt/kartaclysm-wfc/deploy/install.sh
-```
-5. Put the printed domain into `wfc_domain` in the Kartaclysm `pack.json` and publish the pack.
+2. Compute > Instances > Create instance:
+   * Image: Canonical Ubuntu 24.04. Shape: `VM.Standard.E2.1.Micro` (x86, 1 GB; install.sh adds swap) or
+     `VM.Standard.A1.Flex` (ARM; the x86 compiler runs through emulation). Both are "Always Free-eligible".
+   * Networking: keep "Assign a public IPv4 address". SSH keys: "Generate a key pair for me", save both files.
+   * Advanced options > Management > Initialization script > Paste cloud-init script: the whole of
+     `deploy/oracle-init.sh`. Create.
+3. On the instance page: Subnet > Default Security List > Add Ingress Rules: Source CIDR `0.0.0.0/0`,
+   IP Protocol `All Protocols`. (The server's own firewall, set up by install.sh, only opens the game ports.)
+4. Wait 15-30 minutes, then open `http://<public IP>/api/stats`: `{"global":...}` means it works.
+   The domain is the IP in hex + `.nip.io` (e.g. 64.176.22.9 -> `40b01609.nip.io`); put it into `wfc_domain`
+   in the Kartaclysm `pack.json` and publish the pack.
 
 Notes: the nip.io name is the IP, so keep the same instance (a new IP means a new `wfc_domain`, and players
 rebuild once). Oracle may stop Always Free VMs that look idle for 7 days; switching the account to Pay As You Go
